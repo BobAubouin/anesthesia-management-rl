@@ -92,3 +92,14 @@ try:
 
 except ValueError as e:
     print(f"Error: {e}")
+
+    def step(self, action):
+        """
+        Perform an action and update the environment state
+        
+        Incorporates medical dynamics such as the patient's response  to anesthesia
+        which can be based on eg underlying health conditions, drug interactions etc
+        """
+
+        #Update environment state based on action and patient type
+        pass
