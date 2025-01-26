@@ -1,105 +1,64 @@
-#Creating the environment to simulate various medical scenarios eg patient types, surgery complexity, drug interactions etc
-
+import numpy as np
 import gym
-from typing import Dict, Any
+from collections import deque
+import time
+from typing import Dict, Tuple
 
 class AnesthesiaEnv(gym.Env):
     """
-    Building a configurable model for patient response and drug dynamics during anesthesia
+    A custom environment simulating anesthesia management.
 
-    Attributes:
-        config (Dict[str, Any]): Configuration dictionary containing all the needed parameters for setting
-        up the patient model and initial state. Expected keys include:
-        - 'patient_age'
-        - 'patient_weight' # in kg
-        - 'surgery_type'
-        - 'surgery_duration'
-        - 'drug_type'
-        - 'drug_dosage'
-        - Additional keys can be added as needed
-
-    Methods:
-        _setup_patient_model: Initializes the PKPD model based on the configuration
-        _initialize_patient_state: Sets the initial state of the patient based on the configuration
+    This environment models the administration of propofol to maintain
+    patient's consciousness level within a target range. It incorporates
+    cognitive and environmental bounds such as fatigue, sensor noise and patient variability
 
     """
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Dict):
         """
-        Initialises the AnesthesiaEnv with necessary configuration
-        
+        Initialise the anesthesia environment.
+
         Args:
-            config (Dict[str, Any]): A dictionary containing configuration settings
-                                     for the environment, including patient details
-                                     and drug parameters.
+            config(Dict): Configuration dictionary containing parameters
+            for the environment.
 
-        Raises:
-            ValueError: If important configuration parameter(s) are missing.
+                Expected keys:
+                - 'ec50': Mean EC50 value for the patient population (default: 2.7)
+                - 'ec50_std': Standard deviation of EC50 values for patient population (default: 0.3)
+                - 'gamma': Sigmoid steepness parameter (default: 1.4)
+                - 'ke0': Effect site equilibration rate (default:0.46)
+                - 'obs_delay': Observation delay in steps (default: 2)
+                - 'action_delay': UI interaction delay in seconds (default: 1.0)
+                - 'shift': Current working shift ('day' or 'night', default: 'day')
         """
 
-        super().__init__()
-        self.config = config
-        self.validate_config(config)
+        #Observation space: BIS value, effect size concentration, vitals (focus :systolic blood pressure), cognitive load
+        self.observation_space = gym.spaces.Box(
+            low=np.array([0, 0, 0, 0, 0]), #Min values for BIS, Ce, SBP, CL
+            high=np.array([100, 10, 1, 1]), #Max values for BIS, Ce, SBP, CL
+            #ie BIS, effect site, vitals, cognitive load
+            dtype=np.float32
+        
+
+        )
+        #Action space: Propofol infusion rate (in mL/kg/min)
+        self.action_space = gym.spaces.Box(
+            low=np.array([0]), #Min infusion rate
+            high=np.array(10), #Max infusion rate
+            dtype=np.float32
+        )
+        #Cognitive & Environmental bounds
+        self.obs_delay = config.get('obs_delay', 2) #Number of steps to delay observations
+        self.obs_buffer = deque(maxlen=self.obs_delay) #Buffer to store delayed observations
+        self.last_action = 0.0 #Track the last action taken for decision fatigue modeling
+
+        #Congitive limits
+        self.surgeries_today = 0 #Number of surgeries performed today
+        self.current_shift = config.get('shift', 'day')
+        self.surgery_length = 0 #Length of the current surgery in minutes
+        self.cognitive_load = 0.0 #Current cognitive load of the anesthesiologist ranging from 0 to 1
+
+        #Initialise the patient model(Bayesian PK/PD model)
         self._setup_patient_model(config)
-        self._initialize_patient_state()
 
-    def validate_config(self, config: Dict[str, Any]):
-        """
-        Validates the configuration dictionary to ensure that all necessary
-        parameters are present.
-
-        Args:
-            config (Dict[str, Any]): The configuration dictionary to validate.
-        Raises:
-            ValueError: If required configuration parameter(s) are missing.
-        """
-
-        required_keys =  ['patient_age', 'patient_weight', 'drug_dosage', 'drug_type', 'surgery_type', 'surgery_duration']
-        missing_keys = [key for key in required_keys if key not in config]
-        if missing_keys:
-            raise ValueError(f"Missing configuration parameters: {','.join(missing_keys)}")  
-
-    def _setup_patient_model(self, config: Dict[str, Any]):
-        """
-        Sets up the pharmacokinetic/pharmacodynamic model using the configuration.
         
-        Args:
-            config  (Dict[str, Any]): The configuration dictionary
-        """
-
-        #Setup the model logic
-        print("Setting up patient model...")
-    
-    def _initialize_patient_state(self):
-        """
-        Initializes the patient state based on the configuration provided during initialization.
-        
-        """
-        print("Initializing patient state...")
-
-#Example usage:
-config = {
-    'patient_age': 35,
-    'patient_weight': 70,
-    'surgery_type': 'Appendectomy',
-    'surgery_duration': 120,
-    'drug_type': 'Propofol',
-    'drug_dosage': 100
-}
-
-try:
-    env = AnesthesiaEnv(config)
-
-except ValueError as e:
-    print(f"Error: {e}")
-
-    def step(self, action):
-        """
-        Perform an action and update the environment state
-        
-        Incorporates medical dynamics such as the patient's response  to anesthesia
-        which can be based on eg underlying health conditions, drug interactions etc
-        """
-
-        #Update environment state based on action and patient type
-        pass
