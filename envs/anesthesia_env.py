@@ -61,4 +61,138 @@ class AnesthesiaEnv(gym.Env):
         #Initialise the patient model(Bayesian PK/PD model)
         self._setup_patient_model(config)
 
+    def _setup_patient_model(self, config: Dict) -> None:
+        """
+        Initialise the bayesian PK/PD model for simulating patient drug response.
+
+        Args:
+            config(Dict): Configuration dictionary containing PK/PD parameters.
+        """
+        from models.pkpd_model import BayesianPKPDModel
+        self.pk_model  = BayesianPKPDModel(
+            ec50_mean=config.get('ec50', 2.7),
+            ec50_std=config.get('ec50_std', 0.3),
+            gamma=config.get('gamma', 1.4),
+            ke0=config.get('ke0', 0.46)
+
+        )
+    def _compute_cognitive_load(self) -> float:
+        """
+        Compute the cognitive load based on:
+        - Number of surgeries performed by the anesthetist that day
+        - Current working shift (day vs night)
+        - Length of the current surgery
+
+        Returns:
+            float: The cognitive load score ranging from 0-1
+        """
+        load = self.surgeries_today * 0.1 #Base load increases with surgeries
+
+        if self.current_shift == "night":
+            load += 0.2
+        load += self.surgery_length * 0.01 #Longer surgeries  increase the load due to fatigue
+        return min(load, 1.0) #Limit the load to 1
+    
+    def step(self, action: np.ndarray) -> Tuple[np.ndarray, float, bool, dict]:
+        """
+        Execute one step in the environment
+
+        Args:
+            action (np.ndarray): The action taken by the agent (propofol infusion rate)
+
+        Returns:
+            Tuple[np.ndarray, float, bool, dict]: 
+            - observation: The current state of the environment
+            - reward: the reward for the action taken
+            - done: whether the episode has ended
+            - info: additional info(empty in this case)        
+        """
+
+        #simulate time passing (eg surgery length increases over the period)
+        self.surgery_length += 1 #Increment the surgery length by 1 minute
+
+        #update cognitive load
+        self.cognitive_load = self._compute_cognitive_load()
+
+        #simulate UI interaction delay (eg time taken to adjust infusion pump)
+        time.sleep(self.config.get('action_delay', 1.0))
+
+        #update drug concentrations using the PK/PD model
+        self.pk_model.update(action[0]) 
+
+        #generate observation (noisy and delayed)
+        obs = self._get_observation()
+
+        #calculate reward with safety constraints
+        reward = self._calculate_reward(action)
+
+        #track alarms for fatigue modeling
+        bis = self.pk_model.calculate_bis()
+        if bis < 40 or bis > 60:
+            self.alarm_count += 1
         
+        #check if the episode has ended (surgery is over)
+        done = self._check_termination()
+
+        return obs, reward, done, {}
+    
+    def _get_observation(self) -> np.ndarray:
+        """
+        Generate a noisy and delayed observation of the environment
+
+        Returns:
+            np.ndarray: The current observation (BIS, Ce, SBP, cognitive load)
+        """
+        bis = self.pk_model.calculate_bis() 
+        effect_site = self.pk_model.get_effect_site_concentration()
+        vitals = self._get_vitals() #sbp
+
+        #add sensor noise (+-5% error) to simulate imperfect monitoring
+        noise = np.random.normal(0, 0.05 * bis)
+        obs = np.array([bis + noise, effect_site, vitals, self.cognitive_load]) 
+
+        #simulate observation delay by storing observations in a buffer
+        self.obs_bufferappend(obs)
+        return self.obs_buffer[0] 
+    
+    def _calculate_reward(self, action: np.array) -> float:
+        """
+        Calculate the reward for the action taken
+
+        Args:
+            action (np.ndarray): The action taken by the agent
+
+        Returns:
+            float: the reward value
+        """
+        bis = self.pk_model.calculate_bis()
+        reward = -abs(bis - 50) #primary reward based on BIS deviation from 50 (target 40-60)
+
+        #safety penalty for critical ranges (BIS <30 or BIS >70)
+        if bis < 30 or bis > 70:
+            reward -= 10
+
+        #penalise large action changes under high cognitive load
+        action_diff = abs(action[0] - self.last_action)
+        reward -= 0.1 * action_diff * (1 + self.cognitive_load)
+
+        #alarm fatigue penalty (for repeated alarms)
+        reward -= 0.5 * self.alarm_count
+
+        return reward
+    
+    def reset(self) -> np.ndarray:
+        """
+        Reset the environment to its initial state
+
+        Returns:
+            np.ndarray: The initial observation
+        """
+        self.pk_model.reset()
+        self.obs_buffer.clear()
+        self.alarm_count = 0
+        self.surgery_length=0
+        self.cognitive_load=0.0
+        return self._get_observation()
+
+    
