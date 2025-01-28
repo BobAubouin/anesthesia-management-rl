@@ -51,6 +51,8 @@ class AnesthesiaEnv(gym.Env):
         self.obs_delay = config.get('obs_delay', 2) #Number of steps to delay observations
         self.obs_buffer = deque(maxlen=self.obs_delay) #Buffer to store delayed observations
         self.last_action = 0.0 #Track the last action taken for decision fatigue modeling
+        #--alarm count
+
 
         #Congitive limits
         self.surgeries_today = 0 #Number of surgeries performed today
@@ -60,6 +62,9 @@ class AnesthesiaEnv(gym.Env):
 
         #Initialise the patient model(Bayesian PK/PD model)
         self._setup_patient_model(config)
+
+        #Initialise anesthesiologist model
+        self._setup_anesthesiologist_model(config)
 
     def _setup_patient_model(self, config: Dict) -> None:
         """
@@ -76,6 +81,17 @@ class AnesthesiaEnv(gym.Env):
             ke0=config.get('ke0', 0.46)
 
         )
+
+    def _setup_anesthesiologist_model(self, config: Dict) -> None:
+        """
+        Set up the anesthesiologist decision-making model
+
+        Parameters:
+        - config
+        """
+        from models.anesthesiologist_model import AnesthesiologistModel
+        self.anesthesiologist = AnesthesiologistModel()
+
     def _compute_cognitive_load(self) -> float:
         """
         Compute the cognitive load based on:
@@ -123,11 +139,19 @@ class AnesthesiaEnv(gym.Env):
         #generate observation (noisy and delayed)
         obs = self._get_observation()
 
+        #simulate anesthesiologists decision making
+        bis = self.pk_model.calculate_bis()
+        effect_site = self.pk_model.get_effect_site_concentration()
+        vitals = self._get_vitals()
+        infusion_rate = self.anesthesiologist.decide_infusion_rate(
+            bis, effect_site, vitals, self.cognitive_load
+        )
+
         #calculate reward with safety constraints
-        reward = self._calculate_reward(action)
+        reward = self._calculate_reward(infusion_rate)
 
         #track alarms for fatigue modeling
-        bis = self.pk_model.calculate_bis()
+        
         if bis < 40 or bis > 60:
             self.alarm_count += 1
         
@@ -138,7 +162,7 @@ class AnesthesiaEnv(gym.Env):
     
     def _get_observation(self) -> np.ndarray:
         """
-        Generate a noisy and delayed observation of the environment
+        Generate a noisy and delayed observation of the environment with cognitive load
 
         Returns:
             np.ndarray: The current observation (BIS, Ce, SBP, cognitive load)
@@ -153,14 +177,14 @@ class AnesthesiaEnv(gym.Env):
 
         #simulate observation delay by storing observations in a buffer
         self.obs_bufferappend(obs)
-        return self.obs_buffer[0] 
+        return self.obs_buffer[0] if len(self.obs_buffer) > 0 else obs
     
     def _calculate_reward(self, action: np.array) -> float:
         """
         Calculate the reward for the action taken
 
         Args:
-            action (np.ndarray): The action taken by the agent
+            action (np.ndarray): The action by the agent - propofol infusion rate
 
         Returns:
             float: the reward value
@@ -172,12 +196,7 @@ class AnesthesiaEnv(gym.Env):
         if bis < 30 or bis > 70:
             reward -= 10
 
-        #penalise large action changes under high cognitive load
-        action_diff = abs(action[0] - self.last_action)
-        reward -= 0.1 * action_diff * (1 + self.cognitive_load)
-
-        #alarm fatigue penalty (for repeated alarms)
-        reward -= 0.5 * self.alarm_count
+        
 
         return reward
     
