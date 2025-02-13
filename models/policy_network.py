@@ -12,7 +12,8 @@ class HierarchicalPolicy(nn.Module):
         self.planner_net = nn.Sequential(
             nn.Linear(64,32),  #Low-level: Computes specific adjustments in the infusion rate
             nn.ReLU(),
-            nn.Linear(32, action_dim)
+            nn.Linear(32, action_dim),
+            nn.Sigmoid()
 
         )
 
