@@ -31,11 +31,11 @@ class AnesthesiaEnv(gym.Env):
                 - 'action_delay': UI interaction delay in seconds (default: 1.0)
                 - 'shift': Current working shift ('day' or 'night', default: 'day')
         """
-
+        self.config = config
         #Observation space: BIS value, effect size concentration, vitals (focus :systolic blood pressure), cognitive load
         self.observation_space = gym.spaces.Box(
-            low=np.array([0, 0, 0, 0, 0]), #Min values for BIS, Ce, SBP, CL
-            high=np.array([100, 10, 1, 1]), #Max values for BIS, Ce, SBP, CL
+            low=np.array([0, 0, 0, 0, 0]), #Min values for BIS, Ce, SBP, CL, additional
+            high=np.array([100, 10, 1, 1, 1]), #Max values for BIS, Ce, SBP, CL
             #ie BIS, effect site, vitals, cognitive load
             dtype=np.float32
         
@@ -44,7 +44,7 @@ class AnesthesiaEnv(gym.Env):
         #Action space: Propofol infusion rate (in mL/kg/min)
         self.action_space = gym.spaces.Box(
             low=np.array([0]), #Min infusion rate
-            high=np.array(10), #Max infusion rate
+            high=np.array([10]), #Max infusion rate
             dtype=np.float32
         )
         #Cognitive & Environmental bounds
@@ -159,7 +159,7 @@ class AnesthesiaEnv(gym.Env):
         done = self._check_termination()
 
         return obs, reward, done, {}
-    
+
     def _get_observation(self) -> np.ndarray:
         """
         Generate a noisy and delayed observation of the environment with cognitive load
@@ -176,7 +176,7 @@ class AnesthesiaEnv(gym.Env):
         obs = np.array([bis + noise, effect_site, vitals, self.cognitive_load]) 
 
         #simulate observation delay by storing observations in a buffer
-        self.obs_bufferappend(obs)
+        self.obs_buffer.append(obs)
         return self.obs_buffer[0] if len(self.obs_buffer) > 0 else obs
     
     def _calculate_reward(self, action: np.array) -> float:
