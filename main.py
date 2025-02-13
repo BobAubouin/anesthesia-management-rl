@@ -77,9 +77,10 @@ def main():
         'ec50_std': 0.3,
         'gamma': 1.4,
         'ke0': 0.46,
-        'obs_delay': 2,
-        'action_delay': 1.0,
-        'shift': 'night'
+        'obs_delay': 0, #consider removing
+        'action_delay': 0.0,#consider removing
+        'shift': 'night',
+        'max_surgery_length': 120,
     }
     env = AnesthesiaEnv(config)
     policy = HierarchicalPolicy(obs_dim=env.observation_space.shape[0],
