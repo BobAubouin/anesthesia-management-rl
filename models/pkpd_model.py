@@ -9,31 +9,35 @@ class BayesianPKPDModel:
         self.ec50 = np.random.normal(ec50_mean, ec50_std) 
         self.gamma = gamma 
         self.ke0 = ke0
-        self.reset()
+        self.Ce = 0.0 #initialising effect site concentration
 
-    def update(self, infusion_rate: float) -> None:
+    def update(self, infusion_rate: float):
         """
-        Update the effect site concentration based on 3-compartment pharmacokinetic model
+        Update the effect site concentration based on the infusion rate
+
+        Args:
+            infusion_rate: the rate propofol is infused
         """
-        #Implement PK/PD dynamics
-        pass
+        self.Ce += (infusion_rate - self.ke0 * self.Ce)
 
     def calculate_bis(self) -> float:
         """
         Calculate BIS using the sigmoid Emax model which describes the effectiveness of drug as a function of its concentration
 =
         """
-        effect_site = self.get_effect_site_concentration()
-        return 100 * (1- (effect_site**self.gamma) / (effect_site**self.gamma + self.ec50**self.gamma))
+        if self.Ce <= 0:
+            return 100.0
+        Ce_gamma = self.Ce ** self.gamma
+        ec50_gamma = self.ec50 ** self.gamma
+        bis = 100* (1-Ce_gamma/ (Ce_gamma + ec50_gamma))
+        return bis
     
     def get_effect_site_concentration(self) -> float:
         """
         Return effect site concentration
         """
-        #implement
-        return 0.0 #placeholder
+        return self.Ce
     
     def reset(self) -> None:
         """Reset model to initial state"""
-        #implement
-        pass
+        self.Ce = 0.0
