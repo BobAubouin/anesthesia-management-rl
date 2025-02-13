@@ -91,6 +91,24 @@ class AnesthesiaEnv(gym.Env):
         """
         from models.anesthesiologist_model import AnesthesiologistModel
         self.anesthesiologist = AnesthesiologistModel()
+    
+    def _get_vitals(self):
+        """
+        Simulate the patient's systolic blood pressure (SBP)
+
+        SBP is influenced by:
+        - the propofol infusion rate
+        - random fluctuations which can be within normal limits
+        """
+
+        baseline_sbp = 110
+        noise = np.random.normal(0,5) #random fluctuation in BP (+= 5mmHg)
+
+        #infusion effect: high propofol infusion rate can decrease SBP
+        propofol_effect = -self.last_action * 2 # every unit of propofol lowers sbp slightly
+        sbp = baseline_sbp + noise + propofol_effect
+        sbp = max(80, min(sbp, 160))
+        return sbp
 
     def _compute_cognitive_load(self) -> float:
         """
@@ -108,6 +126,16 @@ class AnesthesiaEnv(gym.Env):
             load += 0.2
         load += self.surgery_length * 0.01 #Longer surgeries  increase the load due to fatigue
         return min(load, 1.0) #Limit the load to 1
+    
+    def _check_termination(self) -> bool:
+        """
+        Determines whether the surgical episode is ended
+        Assumes a surgery takes 120 minutes
+        """
+        max_surgery_length = self.config.get('max_surgery_length', 120)
+        if self.surgery_length >=max_surgery_length:
+            return True
+        return False
     
     def step(self, action: np.ndarray) -> Tuple[np.ndarray, float, bool, dict]:
         """
@@ -170,10 +198,11 @@ class AnesthesiaEnv(gym.Env):
         bis = self.pk_model.calculate_bis() 
         effect_site = self.pk_model.get_effect_site_concentration()
         vitals = self._get_vitals() #sbp
+        additional = 4
 
         #add sensor noise (+-5% error) to simulate imperfect monitoring
         noise = np.random.normal(0, 0.05 * bis)
-        obs = np.array([bis + noise, effect_site, vitals, self.cognitive_load]) 
+        obs = np.array([bis + noise, effect_site, vitals, self.cognitive_load, additional]) 
 
         #simulate observation delay by storing observations in a buffer
         self.obs_buffer.append(obs)
