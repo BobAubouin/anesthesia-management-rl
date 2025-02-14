@@ -30,13 +30,6 @@ class AnesthesiologistModel:
         base_rate = 5 #defaul infusion rate
         adjustment = bis_error * 0.1
 
-        #Adjust for cognitive load: Higher cognitive load could reduce the precision
-        adjustment *= (1 - cognitive_load)
-
-        #Add noise to simulate uncertainty under high cognitive load
-        noise = np.random.normal(0, 0.1 * cognitive_load)
-        adjustment += noise
-
         #Calculate final infusion rate
         infusion_rate = base_rate + adjustment
 
