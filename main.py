@@ -5,131 +5,120 @@ import matplotlib.pyplot as plt
 from envs.anesthesia_env import AnesthesiaEnv
 from models.policy_network import HierarchicalPolicy
 
-def train_agent(env: AnesthesiaEnv, policy: HierarchicalPolicy, num_episodes: int=1000) -> dict:
+def train_agent(env: AnesthesiaEnv, policy: HierarchicalPolicy, num_episodes: int=2500) -> dict:
     """
-    Train the agent using the environment and policy
+    Train the agent using REINFORCE algorithm
 
     Returns:
     - a dictionary containing the training metrics
     """
     optimizer = optim.Adam(policy.parameters(), lr = 1e-3)
     gamma = 0.99
+    
+    #training metrics storage
     metrics = {
         'episode_rewards': [],
         'episode_lengths': [],
-        'losses': [],
         'bis_history': [],
         'infusion_history': []
     }
-    #initialise plots
     plt.ion()
-    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(10,12)) 
-    fig.suptitle('Training Progress')
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize = (10,8))
 
     for episode in range(num_episodes):
         obs = env.reset()
         done = False
-        episode_reward = 0
-        episode_length = 0
-        losses = []
-        bis_history = []
-        infusion_history = []
-
+        rewards = []
+        log_probs = []
+        bis_trace = []
+        infusion_trace = []
 
         while not done:
             #convert observation to tensor
-            obs_tensor = torch.FloatTensor(obs).unsqueeze(0)
+            obs_tensor = torch.FloatTensor(obs)
 
-            #get action from policy
-            action_tensor = policy(obs_tensor) 
-            action = action_tensor.detach().numpy().flatten() 
+            #get action distribution and sample
+            action_dist = policy(obs_tensor)
+            action = action_dist.sample()
+            log_prob = action_dist.log_prob(action).sum()
 
-            #take step in the environment
-            next_obs, reward, done, _ = env.step(action)
+            #take action in environment
+            next_obs, reward, done, _ = env.step(action.numpy())
 
-            #store experience ()
-            next_obs_tensor = torch.FloatTensor(next_obs).unsqueeze(0) #
-            reward_tensor = torch.FloatTensor([reward]) 
+            #store data
+            rewards.append(reward)
+            log_probs.append(log_prob)
+            obs = next_obs
+            bis_trace.append(obs[0]) #store BIS value
+            infusion_trace.append(action.item()) #store infusion rate
 
-            #compute TD error
-            with torch.no_grad():
-                next_value= policy(next_obs_tensor).max().item()
-            target_value = reward_tensor + gamma * next_value
-            current_value = policy(obs_tensor).max()
-            td_error = target_value - current_value
-
-            #get loss and update the policy
-            loss = td_error.pow(2).mean()
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-            #update metrics
-            episode_reward +=reward
-            episode_length += 1
-            losses.append(loss.item())
-
-            #store bis and infusion rate for visualisation
-            bis_history.append(obs[0])
-            infusion_history.append(action[0])
-
-            #update observation
             obs = next_obs
 
-        #log metrics for this episode
-        metrics['episode_rewards'].append(episode_reward)
-        metrics['episode_lengths'].append(episode_length)
-        metrics['losses'].append(np.mean(losses))
-        metrics['bis_history'].append(bis_history)
-        metrics['infusion_history'].append(infusion_history)
+        #calculate discounted returns
+        returns = []
+        R = 0
 
-        #plot every 10 episodes
-        if (episode +1) % 10 == 0:
-            print(f"Episode {episode+1}/{num_episodes}, Reward: {episode_reward}, Loss: {np.mean(losses)}")
+        for r in reversed(rewards):
+            R = r + gamma * R
+            returns.insert(0, R)
+        returns = torch.tensor(returns)
+        returns = (returns - returns.mean()) / (returns.std() + 1e-8) #normalise
 
-            #clear previous plots
+        #calculate policy loss
+        policy_loss = []
+        for log_prob, R in zip(log_probs, returns):
+            policy_loss.append(-log_prob * R) #negative for gradient ascent
+        policy_loss = torch.stack(policy_loss).sum()
+
+        #update policy
+        optimizer.zero_grad()
+        policy_loss.backward()
+        optimizer.step()
+
+        #store metrics
+        metrics['episode_rewards'].append(sum(rewards))
+        metrics['episode_lengths'].append(len(rewards))
+        metrics['bis_history'].append(bis_trace)
+        metrics['infusion_history'].append(infusion_trace)
+       
+
+    #     #plot every 50 episodes
+        if (episode +1) % 50 == 0:
+            avg_bis = np.mean(bis_trace)
+            avg_infusion = np.mean(infusion_trace)
+            
+            print(f"Episode {episode+1}/{num_episodes}, "
+                  f"Avg Reward: {sum(rewards):.2f}, "
+                  f"Avg BIS: {avg_bis:.2f}, "
+                  f"Avg Infusion: {avg_infusion:.2f}")
             ax1.clear()
             ax2.clear()
-            ax3.clear()
-
-            #plot BIS level over time
-            ax1.plot(bis_history, label = 'BIS Level')
-            ax1.axhline(y=40, color = 'r', linestyle = '--', label = 'BIS lower bound')
-            ax1.axhline(y=60, color='r', linestyle = '--', label = 'BIS upper bound')
-
-            ax1.set_title('BIS level over time')
-            ax1.set_xlabel('Time Steps')
-            ax1.set_ylabel('BIS Level')
+            
+            # Plot BIS values
+            ax1.plot(bis_trace, label='BIS')
+            ax1.axhline(40, color='r', linestyle='--', label='Safe Range')
+            ax1.axhline(60, color='r', linestyle='--')
+            ax1.set_title(f'Episode {episode+1} - BIS Levels')
             ax1.legend()
 
-            #plot infusion rate over time
-            ax2.plot(infusion_history, label='Propofol Infusion Rate')
-            ax2.set_title('Propofol Infusion Rate Over Time')
-            ax2.set_xlabel('Time Steps')
-            ax2.set_ylabel('Infusion Rate (mL/kg/min)')
+            # Plot infusion rates
+            ax2.plot(infusion_trace, label='Infusion Rate')
+            ax2.set_title('Propofol Infusion Rates')
             ax2.legend()
 
-            #plot rewards over episodes
-            ax3.plot(metrics['episode_rewards'], label = 'Episode Reward')
-            ax3.set_title('Rewards Over Episodes')
-            ax3.set_xlabel('Episode')
-            ax3.set_ylabel('Reward')
-            ax3.legend()
-
-            #update plots
             plt.tight_layout()
             plt.pause(0.1)
-    return metrics
 
+    plt.ioff()
+    plt.show()
+    return metrics
+    
 def main():
     config = {
         'ec50': 2.7,
         'ec50_std': 0.3,
         'gamma': 1.4,
         'ke0': 0.46,
-        'obs_delay': 0, #consider removing
-        'action_delay': 0.0,#consider removing
-        'shift': 'night',
         'max_surgery_length': 120,
     }
     env = AnesthesiaEnv(config)
@@ -137,13 +126,20 @@ def main():
                                 action_dim=env.action_space.shape[0])
     
     #train agent 
-    metrics =train_agent(env, policy, num_episodes=1000)
+    num_episodes=2500
+    metrics =train_agent(env, policy, num_episodes)
 
-    #print final metrics
-    print(f"Training complete. Average reward: {np.mean(metrics['episode_rewards'])}")
+    #save final policy
 
-    plt.ioff()
-    plt.show()
+    # Final metrics report
+    print(f"\nTraining completed with {num_episodes} episodes")
+    print(f"Average final reward (last 100 episodes): {np.mean(metrics['episode_rewards'][-100:]):.2f}")
+    
+    last_100_bis = np.concatenate(metrics['bis_history'][-100:])
+    print(f"Average BIS (last 100 episodes): {np.nanmean(last_100_bis):.2f}")
+    
+    last_100_infusion = np.concatenate(metrics['infusion_history'][-100:])
+    print(f"Average infusion rate (last 100 episodes): {np.nanmean(last_100_infusion):.2f} mL/kg/min")
 
 if __name__ == "__main__":
     main()
