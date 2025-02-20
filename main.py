@@ -75,6 +75,10 @@ def train_agent(env: AnesthesiaEnv, policy: HierarchicalPolicy, num_episodes: in
         policy_loss.backward()
         optimizer.step()
 
+        #model checkpoint
+        if episode % 1000 == 0:
+            torch.save(policy.state_dict(), f"propofol_policy_ep{episode}.pth")
+
         #store metrics
         metrics['episode_rewards'].append(sum(rewards))
         metrics['episode_lengths'].append(len(rewards))
@@ -95,14 +99,14 @@ def train_agent(env: AnesthesiaEnv, policy: HierarchicalPolicy, num_episodes: in
             ax2.clear()
             
             # Plot BIS values
-            ax1.plot(bis_trace, label='BIS')
+            ax1.plot(bis_trace, label='BIS', color='mediumorchid')
             ax1.axhline(40, color='r', linestyle='--', label='Safe Range')
             ax1.axhline(60, color='r', linestyle='--')
             ax1.set_title(f'Episode {episode+1} - BIS Levels')
             ax1.legend()
 
             # Plot infusion rates
-            ax2.plot(infusion_trace, label='Infusion Rate')
+            ax2.plot(infusion_trace, label='Infusion Rate', color='thistle')
             ax2.set_title('Propofol Infusion Rates')
             ax2.legend()
 
@@ -130,6 +134,7 @@ def main():
     metrics =train_agent(env, policy, num_episodes)
 
     #save final policy
+    torch.save(policy.state_dict(), "propofol_policy_final.pth")
 
     # Final metrics report
     print(f"\nTraining completed with {num_episodes} episodes")
