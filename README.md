@@ -78,20 +78,7 @@ Safety Constraints: Penalizes unsafe BIS deviation.
 
 Prerequisites
 
-    Python 3.8+
-
-    PyTorch
-
-    Gymnasium
-
-    NumPy
-
-Install my-project with npm
-
-```bash
-  npm install my-project
-  cd my-project
-```
+    pip install -r requirements.txt
     
 ## Usage
 
@@ -100,26 +87,24 @@ Running Experiments
     Configure the environment in main.py: 
 
     config = {
-        'ec50': 3.4,          # Mean EC50 for propofol
-        'ec50_std': 0.5,      # Patient variability
-        'gamma': 1.43,        # Sigmoid steepness
-        'ke0': 0.456,         # Effect site equilibration rate
-        'obs_delay': 2,       # Observation delay (steps)
-        'action_delay': 1.0   # UI interaction delay (seconds)
+        'ec50': 2.7,          # Mean EC50 for propofol
+        'ec50_std': 0.3,      # Patient variability
+        'gamma': 1.4,         # Sigmoid steepness
+        'ke0': 0.46,          # Drug decay over time
+        'max_surgery_length': 120    # time in minutes
     }
 
     Train the RL agent:
-
     python main.py
 
 Customizing the Framework
 
 
-Add New Features: Extend anesthesia_env.py or pkpd_model.py.
+Add New Features: Extend anesthesia_env.py or simple_pkpd.py.
 
-Modify Rewards: Update _calculate_reward in anesthesia_env.py.
+Modify Rewards: Update in anesthesia_env.py.
 
-Test Changes: Add new unit tests in /tests
+Test Changes: Add new unit tests in test_anesthesia_agent.py
 
 
 ## Acknowledgements
