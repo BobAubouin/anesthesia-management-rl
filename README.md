@@ -41,17 +41,14 @@ Safety Constraints: Penalizes unsafe BIS deviation.
 
       | |-- init.py
 
-      | |-- pkpd_model.py # Bayesian PK/PD model with patient variability
+      | |-- simple_pkpd.py # Bayesian PK/PD model with patient variability
 
       | |-- policy_network.py # Hierarchical policy network
 
-      | |-- anesthesiologist_model.py
     
     |-- /utils # Utility functions and classes
 
       | |-- init.py
-
-      | |-- helpers.py # Helper functions (e.g., reward shaping)
 
     |-- main.py # Main script to run experiments
 
@@ -73,7 +70,7 @@ Safety Constraints: Penalizes unsafe BIS deviation.
 
       |-- init.py
 
-      |-- test_environment.py # Tests for environment features
+    |-- test_anesthesia_agent.py
 ## Installation
 
 Prerequisites
