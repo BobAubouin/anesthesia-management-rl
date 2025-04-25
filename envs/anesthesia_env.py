@@ -31,8 +31,8 @@ class AnesthesiaEnv(gym.Env):
         self.config = config
         # Observation space: BIS value, effect site concentration
         self.observation_space = gym.spaces.Box(
-            low=np.array([0, 0]),  # Min values for BIS, Ce
-            high=np.array([100, 10]),  # Max values for BIS, Ce
+            low=np.array([0, 0, 0]),  # Min values for BIS, Ce
+            high=np.array([100, 10, 10]),  # Max values for BIS, Ce
             # ie BIS, effect site, vitals, cognitive load
             dtype=np.float32
         )
@@ -81,8 +81,9 @@ class AnesthesiaEnv(gym.Env):
         # simulate anesthesiologists decision making
         bis = self.pk_model.calculate_bis()
         effect_site = self.pk_model.get_effect_site_concentration()
+        plasma = self.pk_model.get_plasma_concentration()
 
-        obs = np.array([bis, action], dtype=np.float32)
+        obs = np.array([bis, plasma, action], dtype=np.float32)
 
         # calculate reward based on the current state
         reward = self.compute_reward(bis, action)
@@ -110,8 +111,9 @@ class AnesthesiaEnv(gym.Env):
         self.pk_model.reset()
         self.surgery_length = 0
         bis = self.pk_model.calculate_bis()
-        effect_site = self.pk_model.get_effect_site_concentration()
-        return np.array([bis, effect_site], dtype=np.float32)
+        plasma = self.pk_model.get_plasma_concentration()
+
+        return np.array([bis, plasma, 0], dtype=np.float32)
 
     def compute_reward(self, bis, action):
         """
@@ -127,10 +129,10 @@ class AnesthesiaEnv(gym.Env):
         bis_min = 40
         bis_max = 60
 
-        # reward = 10*(1/(1+np.exp(-(bis-bis_min))) - 1/(1+np.exp(-(bis-bis_max))) + 0.5)
-        reward = -((bis - 50) ** 2) / 100 + 1
+        reward = 1*(1/(1+np.exp(-(bis-bis_min))) - 1/(1+np.exp(-(bis-bis_max))) + 0.5)
+        # reward = -((bis - 50) ** 2) / 100 + 1
         reward += -0.3*max(0, np.abs(bis-self.previous_bis)/max(1, self.previous_bis) - 0.05)
-        reward += -0.05*max(0, np.abs(action-self.previous_action)/max(1, self.previous_action) - 0.2)
+        reward += -0.4*max(0, np.abs(action-self.previous_action)/max(1, self.previous_action) - 0.2)
         # if 40 <= bis <= 60:
         #     reward = 1.0
         # else:
