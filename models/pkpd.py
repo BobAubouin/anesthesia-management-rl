@@ -55,6 +55,9 @@ class PKPDModel:
     def get_effect_site_concentration(self) -> float:
         return self.effect_site
 
+    def get_plasma_concentration(self) -> float:
+        return self.pk_model.x[0]
+
     def reset(self) -> None:
         self.patient = pas.Patient(
             self.patient_info,
