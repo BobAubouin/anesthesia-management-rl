@@ -1,6 +1,5 @@
 import torch
 import torch.optim as optim
-import torch.nn.functional as F
 import numpy as np
 import matplotlib.pyplot as plt
 from envs.anesthesia_env import AnesthesiaEnv
@@ -16,6 +15,10 @@ def train_agent(env: AnesthesiaEnv, policy: HierarchicalPolicy, num_episodes: in
     """
     optimizer = optim.Adam(policy.parameters(), lr=1e-3)
     gamma = 0.99
+    alpha_initial = 0.5  # Initial alpha
+    alpha_min = 0.001  # Minimum alpha
+    entropy_threshold = 100  # Define an entropy threshold
+    alpha = alpha_initial  # Start with initial alpha
 
     # training metrics storage
     metrics = {
@@ -27,6 +30,7 @@ def train_agent(env: AnesthesiaEnv, policy: HierarchicalPolicy, num_episodes: in
     plt.ion()
     fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(10, 8))
     reward_log = []
+    entropy_log = []
     for episode in range(num_episodes):
         obs = env.reset()
         done = False
@@ -78,8 +82,14 @@ def train_agent(env: AnesthesiaEnv, policy: HierarchicalPolicy, num_episodes: in
         policy_loss = torch.stack(policy_loss).sum()
 
         # calculate entropy loss
+
+        avg_entropy = np.mean([entropy.detach().numpy() for entropy in entropy_trace])
         entropy_term = torch.stack(entropy_trace).sum()
-        alpha = 0.05  # to adjust
+        entropy_log.append(avg_entropy)
+        if avg_entropy < entropy_threshold:
+            alpha = min(alpha_initial, alpha * 1.05)  # Increase entropy penalty
+        else:
+            alpha = max(alpha_min, alpha * 0.99)  # Decay alpha if entropy is high
 
         loss = policy_loss - alpha * entropy_term
 
@@ -140,6 +150,12 @@ def train_agent(env: AnesthesiaEnv, policy: HierarchicalPolicy, num_episodes: in
             # set symetric log scale
             ax3.set_yscale('symlog')
 
+            ax4 = ax3.twinx()
+            ax4.set_ylabel('Y2-axis', color='orange')
+            ax4.plot(entropy_log, label='Entropy', color='orange')
+            ax4.set_ylabel('Entropy')
+            ax4.set_yscale('symlog')
+
             plt.tight_layout()
             plt.pause(0.1)
 
@@ -159,9 +175,8 @@ def main():
     env = AnesthesiaEnv(config)
     policy = HierarchicalPolicy(obs_dim=env.observation_space.shape[0],
                                 action_dim=env.action_space.shape[0])
-
     # train agent
-    num_episodes = 1000
+    num_episodes = 2500
     metrics = train_agent(env, policy, num_episodes)
 
     # save final policy
